@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KeyActivity</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="app">
+    <!-- Header -->
+    <header class="header">
+      <div class="header-logo">
+        <span class="logo-icon">&#9000;</span>
+        <span class="logo-text">KeyActivity</span>
+      </div>
+      <div id="statusBadge" class="badge badge-idle">Bekleniyor</div>
+    </header>
+
+    <!-- Tabs -->
+    <div class="tabs">
+      <button class="tab active" data-tab="data">Veri</button>
+      <button class="tab" data-tab="mapping">Esleme</button>
+      <button class="tab" data-tab="control">Kontrol</button>
+    </div>
+
+    <!-- Tab: Veri Yukle -->
+    <div id="tab-data" class="tab-content active">
+      <div class="section">
+        <label class="label">Veri Dosyasi (CSV veya Excel)</label>
+        <div class="file-drop-zone" id="dropZone">
+          <div class="drop-icon">&#128196;</div>
+          <div class="drop-text">Dosyayi buraya surukleyin</div>
+          <div class="drop-sub">veya</div>
+          <label class="btn btn-secondary file-label">
+            Dosya Sec
+            <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden>
+          </label>
+        </div>
+        <div id="fileInfo" class="file-info hidden"></div>
+      </div>
+
+      <div id="dataPreview" class="section hidden">
+        <label class="label">Veri Onizleme</label>
+        <div class="table-wrap">
+          <table id="previewTable" class="preview-table">
+            <thead id="previewHead"></thead>
+            <tbody id="previewBody"></tbody>
+          </table>
+        </div>
+        <div id="rowCount" class="row-count"></div>
+      </div>
+    </div>
+
+    <!-- Tab: Alan Esleme -->
+    <div id="tab-mapping" class="tab-content hidden">
+      <div class="section">
+        <div class="section-header">
+          <label class="label">Alan Esleme</label>
+          <button id="addMapping" class="btn btn-sm btn-secondary">+ Ekle</button>
+        </div>
+        <div class="hint">CSV sutunu hangi form alanina yazilacagini belirtin.</div>
+        <div id="mappingList" class="mapping-list">
+          <div class="empty-hint">Once veri dosyasi yukleyin</div>
+        </div>
+      </div>
+
+      <div class="section btn-section">
+        <div class="btn-config-row">
+          <div class="btn-config-item">
+            <label class="label">"Add Another" Butonu</label>
+            <div class="field-row">
+              <input type="text" id="submitSelector" class="input" placeholder="buton CSS secici">
+              <button class="btn btn-icon inspect-btn" data-target="submitSelector" title="Sayfadan sec">&#127919;</button>
+            </div>
+            <div class="hint">Her satirdan sonra tiklanan buton.</div>
+          </div>
+          <div class="btn-config-item">
+            <label class="label">"Finish" Butonu (Son Satir)</label>
+            <div class="field-row">
+              <input type="text" id="finishSelector" class="input" placeholder="buton CSS secici">
+              <button class="btn btn-icon inspect-btn" data-target="finishSelector" title="Sayfadan sec">&#127919;</button>
+            </div>
+            <div class="hint">Yalnizca son satirda tiklanan buton.</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <label class="label">Submit Sonrasi Bekleme</label>
+        <div class="radio-group">
+          <label class="radio-label">
+            <input type="radio" name="waitMode" value="delay" checked>
+            <span>Gecikme suresi</span>
+          </label>
+          <label class="radio-label">
+            <input type="radio" name="waitMode" value="navigation">
+            <span>Sayfa yenilenmesini bekle</span>
+          </label>
+        </div>
+        <div id="delayRow" class="field-row" style="margin-top:8px">
+          <input type="number" id="delayMs" class="input" value="1500" min="100" max="30000" step="100">
+          <span class="unit-label">ms</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Tab: Kontrol -->
+    <div id="tab-control" class="tab-content hidden">
+      <div class="section">
+        <label class="label">Baslangic Satiri</label>
+        <input type="number" id="startRow" class="input" value="1" min="1">
+        <div class="hint">1. satirdan baslamak icin 1 girin.</div>
+      </div>
+
+      <div class="section">
+        <label class="label">Ilerleme</label>
+        <div class="progress-wrap">
+          <div class="progress-bar-bg">
+            <div id="progressBar" class="progress-bar" style="width:0%"></div>
+          </div>
+          <div id="progressText" class="progress-text">0 / 0</div>
+        </div>
+        <div id="currentRowInfo" class="current-row-info hidden"></div>
+      </div>
+
+      <div class="control-buttons">
+        <button id="btnStart" class="btn btn-primary btn-full">Baslat</button>
+        <div class="btn-row">
+          <button id="btnPause" class="btn btn-warning btn-half" disabled>Duraklat</button>
+          <button id="btnStop" class="btn btn-danger btn-half" disabled>Durdur</button>
+        </div>
+      </div>
+
+      <div id="logWrap" class="section">
+        <label class="label">Log</label>
+        <div id="log" class="log"></div>
+      </div>
+    </div>
+  </div>
+
+  <script src="../lib/xlsx.min.js"></script>
+  <script src="popup.js"></script>
+</body>
+</html>
