@@ -71,7 +71,7 @@
             <label class="label">"Add Another" Butonu</label>
             <div class="field-row">
               <input type="text" id="submitSelector" class="input" placeholder="buton CSS secici">
-              <button class="btn btn-icon inspect-btn" data-target="submitSelector" title="Sayfadan sec">&#127919;</button>
+              <button class="btn btn-icon inspect-btn" data-target="submit" title="Sayfadan sec">&#127919;</button>
             </div>
             <div class="hint">Her satirdan sonra tiklanan buton.</div>
           </div>
@@ -79,11 +79,20 @@
             <label class="label">"Finish" Butonu (Son Satir)</label>
             <div class="field-row">
               <input type="text" id="finishSelector" class="input" placeholder="buton CSS secici">
-              <button class="btn btn-icon inspect-btn" data-target="finishSelector" title="Sayfadan sec">&#127919;</button>
+              <button class="btn btn-icon inspect-btn" data-target="finish" title="Sayfadan sec">&#127919;</button>
             </div>
             <div class="hint">Yalnizca son satirda tiklanan buton.</div>
           </div>
         </div>
+      </div>
+
+      <div class="section">
+        <label class="label">Alanlar Doldurulduktan Sonra Bekleme</label>
+        <div class="field-row">
+          <input type="number" id="preSubmitDelay" class="input" value="800" min="0" max="10000" step="100">
+          <span class="unit-label">ms</span>
+        </div>
+        <div class="hint">Price yazildiktan sonra tax hesaplanmasi icin bekler, sonra butona tikar.</div>
       </div>
 
       <div class="section">

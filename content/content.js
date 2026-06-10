@@ -65,7 +65,8 @@ chrome.runtime.onMessage.addListener((msg, _sender, respond) => {
 
 // ── Main automation loop ───────────────────────────────────────────────────
 async function runAutomation(config, startRow) {
-  const { rows, headers, mappings, submitSelector, finishSelector, delay, waitMode, totalRows } = config;
+  const { rows, headers, mappings, submitSelector, finishSelector,
+          preSubmitDelay, delay, waitMode, totalRows } = config;
 
   for (let i = startRow; i < totalRows; i++) {
     if (!isRunning) break;
@@ -80,6 +81,9 @@ async function runAutomation(config, startRow) {
 
     const fillErrors = await fillForm(rowData, mappings);
     fillErrors.forEach(e => notify({ type: 'ERROR', error: e, fatal: false }));
+
+    // Alanlar doldurulduktan sonra bekle (ör. price → tax otomatik hesaplansın)
+    if (preSubmitDelay > 0) await sleep(preSubmitDelay);
 
     const isLast = (i === totalRows - 1);
 
@@ -165,6 +169,7 @@ async function fillElement(el, value) {
     setNativeValue(el, value);
     fireEvent(el, 'input');
     fireEvent(el, 'change');
+    fireEvent(el, 'blur');   // tax gibi otomatik hesaplanan alanları tetikler
   }
 }
 

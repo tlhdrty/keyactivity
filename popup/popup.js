@@ -22,9 +22,10 @@ const previewBody    = $('previewBody');
 const rowCount       = $('rowCount');
 const mappingList    = $('mappingList');
 const addMappingBtn  = $('addMapping');
-const submitSelector = $('submitSelector');
-const finishSelector = $('finishSelector');
-const delayMs        = $('delayMs');
+const submitSelector  = $('submitSelector');
+const finishSelector  = $('finishSelector');
+const preSubmitDelay  = $('preSubmitDelay');
+const delayMs         = $('delayMs');
 const delayRow       = $('delayRow');
 const startRow       = $('startRow');
 const progressBar    = $('progressBar');
@@ -216,10 +217,9 @@ async function checkCapturedSelector() {
   const target   = data.keyactivity_inspect_pending;
   const selector = data.keyactivity_captured_selector;
 
-  if (target.type === 'submit') {
-    submitSelector.value = selector;
-  } else if (target.type === 'finish') {
-    finishSelector.value = selector;
+  const btnTargets = { submit: submitSelector, finish: finishSelector };
+  if (btnTargets[target.type]) {
+    btnTargets[target.type].value = selector;
   } else if (target.type === 'mapping' && mappings[target.idx] !== undefined) {
     mappings[target.idx].selector = selector;
     renderMappings();
@@ -235,12 +235,14 @@ async function checkCapturedSelector() {
 }
 
 // Inspector buttons for submit / finish selectors
+// data-target is 'submit' or 'finish' — matches checkCapturedSelector
 document.querySelectorAll('.inspect-btn[data-target]').forEach(btn => {
   btn.addEventListener('click', () => launchInspector({ type: btn.dataset.target }));
 });
 
-submitSelector.addEventListener('input', () => saveConfig());
-finishSelector.addEventListener('input', () => saveConfig());
+submitSelector.addEventListener('input',  () => saveConfig());
+finishSelector.addEventListener('input',  () => saveConfig());
+preSubmitDelay.addEventListener('change', () => saveConfig());
 
 async function highlightOnPage(selector) {
   if (!selector) return;
@@ -262,14 +264,15 @@ document.querySelectorAll('input[name="waitMode"]').forEach(radio => {
 function buildConfig() {
   const waitMode = document.querySelector('input[name="waitMode"]:checked')?.value || 'delay';
   return {
-    mappings:       mappings,          // tüm satırlar; content.js boş selector'ları zaten atlar
-    submitSelector: submitSelector.value.trim(),
-    finishSelector: finishSelector.value.trim(),
-    delay:          parseInt(delayMs.value) || 1500,
+    mappings:        mappings,          // tüm satırlar; content.js boş selector'ları zaten atlar
+    submitSelector:  submitSelector.value.trim(),
+    finishSelector:  finishSelector.value.trim(),
+    preSubmitDelay:  parseInt(preSubmitDelay.value) || 0,
+    delay:           parseInt(delayMs.value) || 1500,
     waitMode,
-    totalRows:      parsedRows.length,
-    rows:           parsedRows,
-    headers:        parsedHeaders
+    totalRows:       parsedRows.length,
+    rows:            parsedRows,
+    headers:         parsedHeaders
   };
 }
 
@@ -297,9 +300,10 @@ async function loadFromStorage() {
     if (mappings.length === 0 && parsedHeaders.length > 0) {
       mappings = parsedHeaders.map(h => ({ column: h, selector: '' }));
     }
-    submitSelector.value = cfg.submitSelector || '';
-    finishSelector.value = cfg.finishSelector || '';
-    delayMs.value        = cfg.delay || 1500;
+    submitSelector.value  = cfg.submitSelector || '';
+    finishSelector.value  = cfg.finishSelector || '';
+    preSubmitDelay.value  = cfg.preSubmitDelay ?? 800;
+    delayMs.value         = cfg.delay || 1500;
     const wm    = cfg.waitMode || 'delay';
     const radio = document.querySelector(`input[name="waitMode"][value="${wm}"]`);
     if (radio) { radio.checked = true; delayRow.style.display = wm === 'navigation' ? 'none' : 'flex'; }
