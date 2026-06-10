@@ -66,10 +66,16 @@ function parseExcel(buffer) {
 
 function loadRows(rows) {
   if (!rows || rows.length < 2) { logMsg('Dosya bos veya sadece baslik satiri var.', 'error'); return; }
-  parsedHeaders = rows[0].map(h => String(h).trim());
-  parsedRows    = rows.slice(1).filter(r => r.some(c => c !== '' && c != null));
+  const newHeaders = rows[0].map(h => String(h).trim());
+  parsedRows       = rows.slice(1).filter(r => r.some(c => c !== '' && c != null));
+
+  // Farklı bir dosya yükleniyorsa mevcut eşlemeleri sıfırla
+  const headersChanged = JSON.stringify(newHeaders) !== JSON.stringify(parsedHeaders);
+  parsedHeaders = newHeaders;
+  if (headersChanged || mappings.length === 0) {
+    mappings = parsedHeaders.map(h => ({ column: h, selector: '' }));
+  }
   renderPreview();
-  if (mappings.length === 0) mappings = parsedHeaders.map(h => ({ column: h, selector: '' }));
   renderMappings();
   startRow.max = parsedRows.length;
   startRow.value = 1;
@@ -256,7 +262,7 @@ document.querySelectorAll('input[name="waitMode"]').forEach(radio => {
 function buildConfig() {
   const waitMode = document.querySelector('input[name="waitMode"]:checked')?.value || 'delay';
   return {
-    mappings:       mappings.filter(m => m.selector && m.column),
+    mappings:       mappings,          // tüm satırlar; content.js boş selector'ları zaten atlar
     submitSelector: submitSelector.value.trim(),
     finishSelector: finishSelector.value.trim(),
     delay:          parseInt(delayMs.value) || 1500,
@@ -287,6 +293,10 @@ async function loadFromStorage() {
   if (data.keyactivity_config) {
     const cfg = data.keyactivity_config;
     mappings = cfg.mappings || [];
+    // Eğer kaydedilmiş mappings yoksa veya sayısı değiştiyse header'lardan yeniden oluştur
+    if (mappings.length === 0 && parsedHeaders.length > 0) {
+      mappings = parsedHeaders.map(h => ({ column: h, selector: '' }));
+    }
     submitSelector.value = cfg.submitSelector || '';
     finishSelector.value = cfg.finishSelector || '';
     delayMs.value        = cfg.delay || 1500;
@@ -308,7 +318,8 @@ async function loadFromStorage() {
 btnStart.addEventListener('click', async () => {
   if (parsedRows.length === 0)  { logMsg('Once veri dosyasi yukleyin.', 'error'); switchTab('data'); return; }
   const cfg = buildConfig();
-  if (cfg.mappings.length === 0) { logMsg('En az bir alan eslemesi tanimlayin.', 'error'); switchTab('mapping'); return; }
+  const activeMappings = cfg.mappings.filter(m => m.selector && m.column);
+  if (activeMappings.length === 0) { logMsg('En az bir alana CSS secici tanimlayin.', 'error'); switchTab('mapping'); return; }
 
   const from = Math.max(0, parseInt(startRow.value) - 1);
   try {
