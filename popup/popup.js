@@ -60,9 +60,12 @@ function parseCSV(text) {
 
 function parseExcel(buffer) {
   if (typeof XLSX === 'undefined') throw new Error('Excel destegi icin lib/xlsx.min.js gerekli.');
-  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+  // cellDates: true  → tarihleri JS Date olarak oku
+  // raw: false       → her hücre için Excel'in görüntülediği formatlanmış metni döndür
+  //                    (sayısal tarih seri numaraları yerine "05/01/2026" gibi)
+  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
 }
 
 function loadRows(rows) {
@@ -180,11 +183,6 @@ addMappingBtn.addEventListener('click', () => {
 });
 
 // ── Inspector: fire-and-forget flow ───────────────────────────────────────
-// 1. User clicks target icon → we tell content.js to start inspector, store
-//    pending target in storage, then close the popup.
-// 2. User clicks on the page → content.js writes selector to storage.
-// 3. User reopens popup → we read and apply the captured selector.
-
 async function launchInspector(target) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
@@ -193,23 +191,18 @@ async function launchInspector(target) {
     const ping = await chrome.tabs.sendMessage(tab.id, { type: 'PING' }).catch(() => null);
     if (!ping?.success) { logMsg('Hedef sayfaya gidin, sonra tekrar deneyin.', 'error'); return; }
 
-    // Persist which field we are targeting across popup open/close
     await chrome.storage.local.set({
       keyactivity_inspect_pending: target,
       keyactivity_captured_selector: null
     });
 
-    // Start inspector in content script (fire-and-forget)
     chrome.tabs.sendMessage(tab.id, { type: 'START_INSPECTOR' }).catch(() => {});
-
-    // Close popup — user must click on the page, then reopen
     window.close();
   } catch (err) {
     logMsg('Hata: ' + err.message, 'error');
   }
 }
 
-// Called on popup open: check if a selector was captured while popup was closed
 async function checkCapturedSelector() {
   const data = await storageGet(['keyactivity_inspect_pending', 'keyactivity_captured_selector']);
   if (!data.keyactivity_inspect_pending || !data.keyactivity_captured_selector) return;
@@ -227,15 +220,10 @@ async function checkCapturedSelector() {
 
   saveConfig();
   logMsg('Secici yakalandi: ' + selector, 'success');
-
-  // Clear pending state
   chrome.storage.local.remove(['keyactivity_inspect_pending', 'keyactivity_captured_selector']);
-
   switchTab('mapping');
 }
 
-// Inspector buttons for submit / finish selectors
-// data-target is 'submit' or 'finish' — matches checkCapturedSelector
 document.querySelectorAll('.inspect-btn[data-target]').forEach(btn => {
   btn.addEventListener('click', () => launchInspector({ type: btn.dataset.target }));
 });
@@ -264,7 +252,7 @@ document.querySelectorAll('input[name="waitMode"]').forEach(radio => {
 function buildConfig() {
   const waitMode = document.querySelector('input[name="waitMode"]:checked')?.value || 'delay';
   return {
-    mappings:        mappings,          // tüm satırlar; content.js boş selector'ları zaten atlar
+    mappings:        mappings,
     submitSelector:  submitSelector.value.trim(),
     finishSelector:  finishSelector.value.trim(),
     preSubmitDelay:  parseInt(preSubmitDelay.value) || 0,
@@ -296,7 +284,6 @@ async function loadFromStorage() {
   if (data.keyactivity_config) {
     const cfg = data.keyactivity_config;
     mappings = cfg.mappings || [];
-    // Eğer kaydedilmiş mappings yoksa veya sayısı değiştiyse header'lardan yeniden oluştur
     if (mappings.length === 0 && parsedHeaders.length > 0) {
       mappings = parsedHeaders.map(h => ({ column: h, selector: '' }));
     }
@@ -313,8 +300,6 @@ async function loadFromStorage() {
     isRunning = true; setUIRunning(true);
     updateProgress(data.keyactivity_currentRow || 0, parsedRows.length);
   }
-
-  // Apply any inspector result captured while popup was closed
   await checkCapturedSelector();
 }
 
