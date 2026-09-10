@@ -39,7 +39,19 @@ const logEl          = $('log');
 
 // ── CSV Parser ─────────────────────────────────────────────────────────────
 function parseCSV(text) {
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip UTF-8 BOM
   const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
+  if (lines.length === 0) return [];
+
+  // Auto-detect delimiter: comma, tab, or semicolon
+  const firstLine = lines[0];
+  let delim = ',';
+  let maxCount = 0;
+  for (const d of [',', '\t', ';']) {
+    const count = firstLine.split(d).length - 1;
+    if (count > maxCount) { maxCount = count; delim = d; }
+  }
+
   return lines.map(line => {
     const row = []; let cur = '', inQuote = false;
     for (let i = 0; i < line.length; i++) {
@@ -50,7 +62,7 @@ function parseCSV(text) {
         else cur += ch;
       } else {
         if (ch === '"') inQuote = true;
-        else if (ch === ',') { row.push(cur); cur = ''; }
+        else if (ch === delim) { row.push(cur); cur = ''; }
         else cur += ch;
       }
     }
