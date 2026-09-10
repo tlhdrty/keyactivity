@@ -40,6 +40,18 @@
         <div id="fileInfo" class="file-info hidden"></div>
       </div>
 
+      <div class="or-divider"><span>veya</span></div>
+
+      <div class="section">
+        <label class="label">Google Sheets'ten Yukle</label>
+        <div class="field-row">
+          <input type="text" id="gsUrl" class="input" placeholder="https://docs.google.com/spreadsheets/d/...">
+          <button id="btnLoadGs" class="btn btn-secondary gs-btn">Yukle</button>
+        </div>
+        <div class="hint">Sayfanin paylas&#305;m ayar&#305; "Herkes goruntuleyebilir" olmali. Farkl&#305; sekme icin URL'deki #gid= degeri otomatik algi&#774;lan&#305;r.</div>
+        <div id="gsStatus" class="gs-status hidden"></div>
+      </div>
+
       <div id="dataPreview" class="section hidden">
         <label class="label">Veri Onizleme</label>
         <div class="table-wrap">

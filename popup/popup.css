@@ -384,4 +384,36 @@ body {
 .log-info    { color: #60A5FA; }
 .log-warn    { color: #F59E0B; }
 
+/* OR divider */
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 12px;
+  color: #9CA3AF;
+  font-size: 11px;
+}
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #E5E7EB;
+}
+
+/* Google Sheets */
+.gs-btn { flex-shrink: 0; white-space: nowrap; }
+
+.gs-status {
+  margin-top: 6px;
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-weight: 500;
+}
+
+.gs-status.loading { background: #EEF2FF; color: #4338CA; }
+.gs-status.success { background: #ECFDF5; color: #065F46; }
+.gs-status.error   { background: #FEF2F2; color: #991B1B; }
+
 .hidden { display: none !important; }

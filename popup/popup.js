@@ -60,9 +60,9 @@ function parseCSV(text) {
 
 function parseExcel(buffer) {
   if (typeof XLSX === 'undefined') throw new Error('Excel destegi icin lib/xlsx.min.js gerekli.');
-  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array' });
+  const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
-  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+  return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
 }
 
 function loadRows(rows) {
@@ -99,6 +99,58 @@ function handleFile(file) {
     reader.readAsArrayBuffer(file);
   }
 }
+
+// ── Google Sheets loader ───────────────────────────────────────────────────
+const gsUrl    = $('gsUrl');
+const btnLoadGs = $('btnLoadGs');
+const gsStatus  = $('gsStatus');
+
+function gsMsg(text, type) {
+  gsStatus.textContent = text;
+  gsStatus.className   = 'gs-status ' + type;
+  gsStatus.classList.remove('hidden');
+}
+
+async function loadFromGoogleSheets(rawUrl) {
+  if (!rawUrl) { gsMsg('URL bos.', 'error'); return; }
+
+  // Sheet ID
+  const idMatch = rawUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+  if (!idMatch) { gsMsg('Gecersiz Google Sheets URL.', 'error'); return; }
+  const sheetId = idMatch[1];
+
+  // gid (sekme id — # veya ? ile gelebilir)
+  const gidMatch = rawUrl.match(/[#&?]gid=(\d+)/);
+  const gid = gidMatch ? gidMatch[1] : '0';
+
+  const csvUrl = `https://docs.google.com/spreadsheets/d/${sheetId}/export?format=csv&gid=${gid}`;
+
+  gsMsg('Yukleniyor...', 'loading');
+  btnLoadGs.disabled = true;
+
+  try {
+    const res = await fetch(csvUrl);
+
+    // Basarili ama HTML donuyorsa -> erisim yok / login yonlendirmesi
+    const ct = res.headers.get('content-type') || '';
+    if (!res.ok || ct.includes('text/html')) {
+      gsMsg('Erisim reddedildi. Sayfayi "Herkes goruntuleyebilir" olarak paylasin.', 'error');
+      return;
+    }
+
+    const text = await res.text();
+    const rows = parseCSV(text);
+    loadRows(rows);
+    gsMsg('Google Sheets basariyla yuklendi.', 'success');
+  } catch (err) {
+    gsMsg('Baglanti hatasi: ' + err.message, 'error');
+  } finally {
+    btnLoadGs.disabled = false;
+  }
+}
+
+btnLoadGs.addEventListener('click', () => loadFromGoogleSheets(gsUrl.value.trim()));
+gsUrl.addEventListener('keydown', e => { if (e.key === 'Enter') loadFromGoogleSheets(gsUrl.value.trim()); });
 
 fileInput.addEventListener('change', e => handleFile(e.target.files[0]));
 dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
