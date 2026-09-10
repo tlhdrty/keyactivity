@@ -11,7 +11,7 @@ body {
   color: #1a1a2e;
   width: 420px;
   min-height: 500px;
-  max-height: 620px;
+  max-height: 640px;
   overflow-y: auto;
 }
 
@@ -146,6 +146,38 @@ body {
   color: #4338CA;
   font-weight: 500;
 }
+
+/* OR divider */
+.or-divider {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0 12px;
+  color: #9CA3AF;
+  font-size: 11px;
+}
+.or-divider::before,
+.or-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: #E5E7EB;
+}
+
+/* Google Sheets */
+.gs-btn { flex-shrink: 0; white-space: nowrap; }
+
+.gs-status {
+  margin-top: 6px;
+  font-size: 11px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  font-weight: 500;
+}
+
+.gs-status.loading { background: #EEF2FF; color: #4338CA; }
+.gs-status.success { background: #ECFDF5; color: #065F46; }
+.gs-status.error   { background: #FEF2F2; color: #991B1B; }
 
 /* Table */
 .table-wrap {
