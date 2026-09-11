@@ -40,11 +40,12 @@ const logEl          = $('log');
 // ── CSV Parser ─────────────────────────────────────────────────────────────
 function parseCSV(text) {
   if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip UTF-8 BOM
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
-  if (lines.length === 0) return [];
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!text.trim()) return [];
 
-  // Auto-detect delimiter: comma, tab, or semicolon
-  const firstLine = lines[0];
+  // Auto-detect delimiter from first line (outside quotes)
+  const firstNewline = text.indexOf('\n');
+  const firstLine = firstNewline >= 0 ? text.slice(0, firstNewline) : text;
   let delim = ',';
   let maxCount = 0;
   for (const d of [',', '\t', ';']) {
@@ -52,22 +53,28 @@ function parseCSV(text) {
     if (count > maxCount) { maxCount = count; delim = d; }
   }
 
-  return lines.map(line => {
-    const row = []; let cur = '', inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuote) {
-        if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
-        else if (ch === '"') inQuote = false;
-        else cur += ch;
-      } else {
-        if (ch === '"') inQuote = true;
-        else if (ch === delim) { row.push(cur); cur = ''; }
-        else cur += ch;
-      }
+  // Stream parser — handles newlines inside quoted cells (RFC 4180)
+  const rows = [];
+  let row = [], cur = '', inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuote) {
+      if (ch === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQuote = false;
+      else cur += ch; // newlines inside quotes are kept as-is
+    } else {
+      if (ch === '"') { inQuote = true; }
+      else if (ch === delim) { row.push(cur.trim()); cur = ''; }
+      else if (ch === '\n') {
+        row.push(cur.trim()); cur = '';
+        if (row.some(c => c !== '')) rows.push(row);
+        row = [];
+      } else { cur += ch; }
     }
-    row.push(cur); return row;
-  });
+  }
+  row.push(cur.trim());
+  if (row.some(c => c !== '')) rows.push(row);
+  return rows;
 }
 
 function parseExcel(buffer) {
