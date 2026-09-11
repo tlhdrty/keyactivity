@@ -7,6 +7,8 @@ let mappings      = [];
 let isRunning     = false;
 let isPaused      = false;
 
+// Tracks which input is waiting for an inspector result
+// {type: 'mapping'|'submit'|'finish', idx: number}
 let pendingInspect = null;
 
 // ── DOM ────────────────────────────────────────────────────────────────────
@@ -37,29 +39,46 @@ const logEl          = $('log');
 
 // ── CSV Parser ─────────────────────────────────────────────────────────────
 function parseCSV(text) {
-  const lines = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n').split('\n').filter(l => l.trim());
-  return lines.map(line => {
-    const row = []; let cur = '', inQuote = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuote) {
-        if (ch === '"' && line[i+1] === '"') { cur += '"'; i++; }
-        else if (ch === '"') inQuote = false;
-        else cur += ch;
-      } else {
-        if (ch === '"') inQuote = true;
-        else if (ch === ',') { row.push(cur); cur = ''; }
-        else cur += ch;
-      }
+  if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1); // strip UTF-8 BOM
+  text = text.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+  if (!text.trim()) return [];
+
+  // Auto-detect delimiter from first line (outside quotes)
+  const firstNewline = text.indexOf('\n');
+  const firstLine = firstNewline >= 0 ? text.slice(0, firstNewline) : text;
+  let delim = ',';
+  let maxCount = 0;
+  for (const d of [',', '\t', ';']) {
+    const count = firstLine.split(d).length - 1;
+    if (count > maxCount) { maxCount = count; delim = d; }
+  }
+
+  // Stream parser — handles newlines inside quoted cells (RFC 4180)
+  const rows = [];
+  let row = [], cur = '', inQuote = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQuote) {
+      if (ch === '"' && text[i + 1] === '"') { cur += '"'; i++; }
+      else if (ch === '"') inQuote = false;
+      else cur += ch; // newlines inside quotes are kept as-is
+    } else {
+      if (ch === '"') { inQuote = true; }
+      else if (ch === delim) { row.push(cur.trim()); cur = ''; }
+      else if (ch === '\n') {
+        row.push(cur.trim()); cur = '';
+        if (row.some(c => c !== '')) rows.push(row);
+        row = [];
+      } else { cur += ch; }
     }
-    row.push(cur); return row;
-  });
+  }
+  row.push(cur.trim());
+  if (row.some(c => c !== '')) rows.push(row);
+  return rows;
 }
 
 function parseExcel(buffer) {
   if (typeof XLSX === 'undefined') throw new Error('Excel destegi icin lib/xlsx.min.js gerekli.');
-  // cellDates: true  → tarihleri JS Date olarak oku
-  // raw: false       → Excel'in görüntülediği formatı kullan (tarih serisi yerine 05/01/2026)
   const wb = XLSX.read(new Uint8Array(buffer), { type: 'array', cellDates: true });
   const ws = wb.Sheets[wb.SheetNames[0]];
   return XLSX.utils.sheet_to_json(ws, { header: 1, defval: '', raw: false });
@@ -69,6 +88,8 @@ function loadRows(rows) {
   if (!rows || rows.length < 2) { logMsg('Dosya bos veya sadece baslik satiri var.', 'error'); return; }
   const newHeaders = rows[0].map(h => String(h).trim());
   parsedRows       = rows.slice(1).filter(r => r.some(c => c !== '' && c != null));
+
+  // Farklı bir dosya yükleniyorsa mevcut eşlemeleri sıfırla
   const headersChanged = JSON.stringify(newHeaders) !== JSON.stringify(parsedHeaders);
   parsedHeaders = newHeaders;
   if (headersChanged || mappings.length === 0) {
@@ -98,8 +119,8 @@ function handleFile(file) {
   }
 }
 
-// ── Google Sheets loader ──────────────────────────────────────────────────────
-const gsUrl     = $('gsUrl');
+// ── Google Sheets loader ───────────────────────────────────────────────────
+const gsUrl    = $('gsUrl');
 const btnLoadGs = $('btnLoadGs');
 const gsStatus  = $('gsStatus');
 
@@ -112,10 +133,12 @@ function gsMsg(text, type) {
 async function loadFromGoogleSheets(rawUrl) {
   if (!rawUrl) { gsMsg('URL bos.', 'error'); return; }
 
+  // Sheet ID
   const idMatch = rawUrl.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
   if (!idMatch) { gsMsg('Gecersiz Google Sheets URL.', 'error'); return; }
   const sheetId = idMatch[1];
 
+  // gid (sekme id — # veya ? ile gelebilir)
   const gidMatch = rawUrl.match(/[#&?]gid=(\d+)/);
   const gid = gidMatch ? gidMatch[1] : '0';
 
@@ -126,13 +149,17 @@ async function loadFromGoogleSheets(rawUrl) {
 
   try {
     const res = await fetch(csvUrl);
-    const ct  = res.headers.get('content-type') || '';
+
+    // Basarili ama HTML donuyorsa -> erisim yok / login yonlendirmesi
+    const ct = res.headers.get('content-type') || '';
     if (!res.ok || ct.includes('text/html')) {
       gsMsg('Erisim reddedildi. Sayfayi "Herkes goruntuleyebilir" olarak paylasin.', 'error');
       return;
     }
+
     const text = await res.text();
-    loadRows(parseCSV(text));
+    const rows = parseCSV(text);
+    loadRows(rows);
     gsMsg('Google Sheets basariyla yuklendi.', 'success');
   } catch (err) {
     gsMsg('Baglanti hatasi: ' + err.message, 'error');
@@ -223,29 +250,44 @@ addMappingBtn.addEventListener('click', () => {
   saveConfig();
 });
 
-// ── Inspector ────────────────────────────────────────────────────────────────
+// ── Inspector: fire-and-forget flow ───────────────────────────────────────
+// 1. User clicks target icon → we tell content.js to start inspector, store
+//    pending target in storage, then close the popup.
+// 2. User clicks on the page → content.js writes selector to storage.
+// 3. User reopens popup → we read and apply the captured selector.
+
 async function launchInspector(target) {
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) { logMsg('Aktif sekme bulunamadi.', 'error'); return; }
+
     const ping = await chrome.tabs.sendMessage(tab.id, { type: 'PING' }).catch(() => null);
     if (!ping?.success) { logMsg('Hedef sayfaya gidin, sonra tekrar deneyin.', 'error'); return; }
+
+    // Persist which field we are targeting across popup open/close
     await chrome.storage.local.set({
       keyactivity_inspect_pending: target,
       keyactivity_captured_selector: null
     });
+
+    // Start inspector in content script (fire-and-forget)
     chrome.tabs.sendMessage(tab.id, { type: 'START_INSPECTOR' }).catch(() => {});
+
+    // Close popup — user must click on the page, then reopen
     window.close();
   } catch (err) {
     logMsg('Hata: ' + err.message, 'error');
   }
 }
 
+// Called on popup open: check if a selector was captured while popup was closed
 async function checkCapturedSelector() {
   const data = await storageGet(['keyactivity_inspect_pending', 'keyactivity_captured_selector']);
   if (!data.keyactivity_inspect_pending || !data.keyactivity_captured_selector) return;
+
   const target   = data.keyactivity_inspect_pending;
   const selector = data.keyactivity_captured_selector;
+
   const btnTargets = { submit: submitSelector, finish: finishSelector };
   if (btnTargets[target.type]) {
     btnTargets[target.type].value = selector;
@@ -253,12 +295,18 @@ async function checkCapturedSelector() {
     mappings[target.idx].selector = selector;
     renderMappings();
   }
+
   saveConfig();
   logMsg('Secici yakalandi: ' + selector, 'success');
+
+  // Clear pending state
   chrome.storage.local.remove(['keyactivity_inspect_pending', 'keyactivity_captured_selector']);
+
   switchTab('mapping');
 }
 
+// Inspector buttons for submit / finish selectors
+// data-target is 'submit' or 'finish' — matches checkCapturedSelector
 document.querySelectorAll('.inspect-btn[data-target]').forEach(btn => {
   btn.addEventListener('click', () => launchInspector({ type: btn.dataset.target }));
 });
@@ -287,7 +335,7 @@ document.querySelectorAll('input[name="waitMode"]').forEach(radio => {
 function buildConfig() {
   const waitMode = document.querySelector('input[name="waitMode"]:checked')?.value || 'delay';
   return {
-    mappings:        mappings,
+    mappings:        mappings,          // tüm satırlar; content.js boş selector'ları zaten atlar
     submitSelector:  submitSelector.value.trim(),
     finishSelector:  finishSelector.value.trim(),
     preSubmitDelay:  parseInt(preSubmitDelay.value) || 0,
@@ -319,6 +367,7 @@ async function loadFromStorage() {
   if (data.keyactivity_config) {
     const cfg = data.keyactivity_config;
     mappings = cfg.mappings || [];
+    // Eğer kaydedilmiş mappings yoksa veya sayısı değiştiyse header'lardan yeniden oluştur
     if (mappings.length === 0 && parsedHeaders.length > 0) {
       mappings = parsedHeaders.map(h => ({ column: h, selector: '' }));
     }
@@ -335,6 +384,8 @@ async function loadFromStorage() {
     isRunning = true; setUIRunning(true);
     updateProgress(data.keyactivity_currentRow || 0, parsedRows.length);
   }
+
+  // Apply any inspector result captured while popup was closed
   await checkCapturedSelector();
 }
 
@@ -344,12 +395,14 @@ btnStart.addEventListener('click', async () => {
   const cfg = buildConfig();
   const activeMappings = cfg.mappings.filter(m => m.selector && m.column);
   if (activeMappings.length === 0) { logMsg('En az bir alana CSS secici tanimlayin.', 'error'); switchTab('mapping'); return; }
+
   const from = Math.max(0, parseInt(startRow.value) - 1);
   try {
     const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
     if (!tab) throw new Error('Aktif sekme bulunamadi');
     const ping = await chrome.tabs.sendMessage(tab.id, { type: 'PING' }).catch(() => null);
     if (!ping?.success) { logMsg('Sayfa hazir degil. Sayfayi yenileyin.', 'error'); return; }
+
     isRunning = true; isPaused = false;
     setUIRunning(true);
     chrome.storage.local.set({ keyactivity_running: true, keyactivity_currentRow: from, keyactivity_targetTab: tab.id });
